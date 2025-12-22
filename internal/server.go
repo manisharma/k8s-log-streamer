@@ -48,6 +48,12 @@ func WithLogger(logger zerolog.Logger) Option {
 	}
 }
 
+func WithNativeInformer(isNativeInformer bool) Option {
+	return func(s *Server) {
+		s.isNativeInformer = isNativeInformer
+	}
+}
+
 func NewServer(cfg common.LogsStreamerConfig, options ...Option) *Server {
 	s := &Server{
 		cfg:              cfg,
@@ -130,7 +136,6 @@ func (s *Server) Start(ctx context.Context) error {
 		if err != nil {
 			return fmt.Errorf("kubernetes.NewForConfig(cfg) failed, error: %v", err)
 		}
-		s.isNativeInformer = true
 	}
 	return s.start(ctx)
 }

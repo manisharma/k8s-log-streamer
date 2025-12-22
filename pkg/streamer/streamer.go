@@ -24,10 +24,17 @@ func WithLogger(logger zerolog.Logger) Option {
 	}
 }
 
+func WithNativeInformer(isNativeInformer bool) Option {
+	return func(s *LogsStreamer) {
+		s.isNativeInformer = isNativeInformer
+	}
+}
+
 type LogsStreamer struct {
-	k8sClient *kubernetes.Clientset
-	logger    zerolog.Logger
-	server    *internal.Server
+	k8sClient        *kubernetes.Clientset
+	logger           zerolog.Logger
+	isNativeInformer bool
+	server           *internal.Server
 }
 
 func NewLogStreamer(cfg common.LogsStreamerConfig, options ...Option) *LogsStreamer {
@@ -35,11 +42,12 @@ func NewLogStreamer(cfg common.LogsStreamerConfig, options ...Option) *LogsStrea
 	for _, option := range options {
 		option(l)
 	}
-	var internalOptions = make([]internal.Option, 0, 2)
+	var internalOptions = make([]internal.Option, 0, 3)
 	internalOptions = append(internalOptions, internal.WithLogger(l.logger))
 	if l.k8sClient != nil {
 		internalOptions = append(internalOptions, internal.Withk8sClient(l.k8sClient))
 	}
+	internalOptions = append(internalOptions, internal.WithNativeInformer(l.isNativeInformer))
 	l.server = internal.NewServer(cfg, internalOptions...)
 	return l
 }
