@@ -53,3 +53,15 @@ func (s *LogsStreamer) Start(ctx context.Context) error {
 func (s *LogsStreamer) Stop() {
 	s.server.Stop()
 }
+
+func (s *LogsStreamer) AddFn(ctx context.Context, obj any) {
+	s.server.AddFn(ctx, obj)
+}
+
+func (s *LogsStreamer) UpdateFn(ctx context.Context, oldObj, newObj any) {
+	s.server.UpdateFn(ctx, oldObj, newObj)
+}
+
+func (s *LogsStreamer) DeleteFn(ctx context.Context, obj any) {
+	s.server.DeleteFn(ctx, obj)
+}

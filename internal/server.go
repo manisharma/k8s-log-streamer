@@ -142,9 +142,11 @@ func (s *Server) Stop() {
 func (s *Server) AddFn(ctx context.Context, obj any) {
 	s.addFn(ctx, obj)
 }
+
 func (s *Server) UpdateFn(ctx context.Context, oldObj, newObj any) {
-	s.updateFn(ctx, oldObj)
+	s.updateFn(ctx, newObj)
 }
+
 func (s *Server) DeleteFn(ctx context.Context, obj any) {
 	s.deleteFn(ctx, obj)
 }
