@@ -381,6 +381,8 @@ func (s *Server) flush() {
 		return
 	}
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Mit-Subscription-ID", "1")
+	req.Header.Set("Mit-Org-ID", "1")
 
 	resp, err := s.httpClient.Do(req)
 	if err != nil {
