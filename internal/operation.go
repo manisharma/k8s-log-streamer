@@ -296,19 +296,32 @@ func (s *Server) meetsCriteria(raw []byte) bool {
 		return false
 	}
 	if s.cfg.Operator == "and" {
-		items := s.filter.FindAll(raw, -1)
-		if len(items) == 0 {
+		if !s.coreFilterRegex.Match(raw) {
 			return false
 		}
-		for _, filter := range s.filters {
+		// 4xx status code must be in conjunction with 'failed' or 'error'
+		if s.regexp4xxValue != nil && s.regexp4xxValue.Match(raw) {
+			// short circuit if either 'failed' or 'error' is present
+			if s.failedRegex.Match(raw) || s.errorRegex.Match(raw) {
+				return true
+			}
+		}
+		// 5xx status code must be in conjunction with 'failed' or 'error'
+		if s.regexp5xxValue != nil && s.regexp5xxValue.Match(raw) {
+			// short circuit if either 'failed' or 'error' is present
+			if s.failedRegex.Match(raw) || s.errorRegex.Match(raw) {
+				return true
+			}
+		}
+		// fallback all filters must match
+		for _, filter := range s.filtersRegex {
 			if !filter.Match(raw) {
 				return false
 			}
 		}
 		return true
 	}
-	resp := s.filter.Match(raw)
-	return resp
+	return s.coreFilterRegex.Match(raw)
 }
 
 func (s *Server) areLogsCurated(raw []byte) (bool, []byte) {

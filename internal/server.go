@@ -24,8 +24,12 @@ type Server struct {
 	httpClient       *http.Client
 	keywords         [][]byte
 	newLine          []byte
-	filter           *regexp.Regexp
-	filters          []*regexp.Regexp
+	failedRegex      *regexp.Regexp
+	errorRegex       *regexp.Regexp
+	coreFilterRegex  *regexp.Regexp
+	filtersRegex     []*regexp.Regexp
+	regexp5xxValue   *regexp.Regexp
+	regexp4xxValue   *regexp.Regexp
 	k8sClient        *kubernetes.Clientset
 	ledger           map[string]streamCtx
 	ledgerLocker     *sync.Mutex
@@ -61,6 +65,8 @@ func NewServer(cfg common.LogsStreamerConfig, options ...Option) *Server {
 		logBatchMutex:    &sync.Mutex{},
 		httpClient:       &http.Client{Timeout: 10 * time.Second},
 		newLine:          []byte("\n"),
+		failedRegex:      regexp.MustCompile(`(?i)failed`),
+		errorRegex:       regexp.MustCompile(`(?i)error`),
 		ledger:           make(map[string]streamCtx),
 		ledgerLocker:     &sync.Mutex{},
 		stream:           make(chan streamable, 2000),
@@ -68,7 +74,7 @@ func NewServer(cfg common.LogsStreamerConfig, options ...Option) *Server {
 		isNativeInformer: false,
 	}
 	s.keywords = make([][]byte, 0, len(cfg.Keywords))
-	s.filters = make([]*regexp.Regexp, 0, len(cfg.Keywords))
+	s.filtersRegex = make([]*regexp.Regexp, 0, len(cfg.Keywords))
 
 	var (
 		has4xx           = false
@@ -79,26 +85,28 @@ func NewServer(cfg common.LogsStreamerConfig, options ...Option) *Server {
 	)
 
 	for _, keyword := range cfg.Keywords {
-		if keyword == "4xx" {
+		if strings.EqualFold(keyword, "4xx") {
 			has4xx = true
+			s.regexp4xxValue = regexp.MustCompile(regexp4XXValue)
 			continue
 		}
-		if keyword == "5xx" {
+		if strings.EqualFold(keyword, "5xx") {
 			has5xx = true
+			s.regexp5xxValue = regexp.MustCompile(regexp5XXValue)
 			continue
 		}
 		filteredKeywords = append(filteredKeywords, keyword)
-		s.filters = append(s.filters, regexp.MustCompile(`(?i)`+regexp.QuoteMeta(keyword)))
+		s.filtersRegex = append(s.filtersRegex, regexp.MustCompile(`(?i)`+regexp.QuoteMeta(keyword)))
 		s.keywords = append(s.keywords, []byte(keyword))
 	}
 
 	var regexpBuilder strings.Builder
 	if has4xx || has5xx {
 		if has4xx {
-			s.filters = append(s.filters, regexp.MustCompile(regexp4XXValue))
+			s.filtersRegex = append(s.filtersRegex, s.regexp4xxValue)
 		}
 		if has5xx {
-			s.filters = append(s.filters, regexp.MustCompile(regexp5XXValue))
+			s.filtersRegex = append(s.filtersRegex, s.regexp5xxValue)
 		}
 		if has4xx && has5xx {
 			regexpBuilder.WriteString(regexp4XXValue + "|" + regexp5XXValue)
@@ -118,7 +126,7 @@ func NewServer(cfg common.LogsStreamerConfig, options ...Option) *Server {
 		regexpBuilder.WriteString(`(?i)` + strings.Join(filteredKeywords, "|"))
 	}
 
-	s.filter = regexp.MustCompile(regexpBuilder.String())
+	s.coreFilterRegex = regexp.MustCompile(regexpBuilder.String())
 	s.logBatch = make([]entry, 0, s.cfg.BatchSize)
 	for _, option := range options {
 		option(s)
