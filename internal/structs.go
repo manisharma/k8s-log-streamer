@@ -10,6 +10,7 @@ type streamCtx struct {
 }
 
 type entry struct {
+	Namespace string `json:"namespace"`
 	Pod       string `json:"pod"`
 	Container string `json:"container"`
 	Image     string `json:"image"`

@@ -226,6 +226,7 @@ func (s *Server) process(item streamable, logger zerolog.Logger) {
 		}
 		if curated, raw := s.areLogsCurated(raw); curated {
 			s.pileUpOrFlush(entry{
+				Namespace: item.namespace,
 				Pod:       item.name,
 				Container: container.name,
 				Image:     container.image,
