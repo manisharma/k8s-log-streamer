@@ -62,11 +62,12 @@ func (s *Server) isPodCurated(pod *corev1.Pod) bool {
 
 func toStreamable(ctx context.Context, pod *corev1.Pod) streamable {
 	p := streamable{ctx: ctx, name: pod.Name, namespace: pod.Namespace}
-	p.containers = make([]streamableContainer, 0, len(pod.Spec.Containers))
-	for _, container := range pod.Spec.Containers {
+	p.containers = make([]streamableContainer, 0, len(pod.Status.ContainerStatuses))
+	for _, container := range pod.Status.ContainerStatuses {
 		p.containers = append(p.containers, streamableContainer{
-			name:  container.Name,
-			image: container.Image,
+			name:    container.Name,
+			image:   container.Image,
+			imageId: container.ImageID,
 		})
 	}
 	return p
@@ -78,7 +79,7 @@ func (s *Server) addFn(ctx context.Context, obj any) {
 		s.logger.Error().Msg("addFn: obj.(*corev1.Pod) failed")
 		return
 	}
-	if pod == nil || pod.Status.Phase != corev1.PodRunning || !s.isPodCurated(pod) {
+	if pod == nil || !s.isPodCurated(pod) {
 		return
 	}
 	name := extractFullyQualifiedName(pod)
@@ -95,12 +96,12 @@ func (s *Server) addFn(ctx context.Context, obj any) {
 }
 
 func (s *Server) updateFn(ctx context.Context, obj any) {
-	var pod, ok = obj.(*corev1.Pod)
+	pod, ok := obj.(*corev1.Pod)
 	if !ok {
 		s.logger.Error().Msg("updateFn: newObj.(*corev1.Pod) failed")
 		return
 	}
-	if pod == nil || pod.Status.Phase != corev1.PodRunning || !s.isPodCurated(pod) {
+	if pod == nil || !s.isPodCurated(pod) {
 		return
 	}
 	name := extractFullyQualifiedName(pod)

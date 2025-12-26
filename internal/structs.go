@@ -25,6 +25,7 @@ type streamable struct {
 }
 
 type streamableContainer struct {
-	name  string
-	image string
+	name    string
+	image   string
+	imageId string
 }
