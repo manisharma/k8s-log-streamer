@@ -48,7 +48,7 @@ func Withk8sClient(k8sClient *kubernetes.Clientset) Option {
 
 func WithLogger(logger zerolog.Logger) Option {
 	return func(s *Server) {
-		s.logger = logger
+		s.logger = logger.With().Str("module", "k8s-logs-streamer").Logger()
 	}
 }
 
@@ -70,7 +70,7 @@ func NewServer(cfg common.LogsStreamerConfig, options ...Option) *Server {
 		ledger:           make(map[string]streamCtx),
 		ledgerLocker:     &sync.Mutex{},
 		stream:           make(chan streamable, 2000),
-		logger:           zerolog.New(os.Stdout),
+		logger:           zerolog.New(os.Stdout).With().Str("module", "k8s-logs-streamer").Logger(),
 		isNativeInformer: false,
 	}
 	s.keywords = make([][]byte, 0, len(cfg.Keywords))

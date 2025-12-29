@@ -231,6 +231,7 @@ func (s *Server) process(item streamable, logger zerolog.Logger) {
 				Pod:       item.name,
 				Container: container.name,
 				Image:     container.image,
+				ImageId:   container.imageId,
 				Logs:      raw,
 			})
 		}
@@ -366,6 +367,8 @@ func (s *Server) flush() {
 	batchToSend := s.logBatch
 	s.logBatch = s.logBatch[:0]
 	s.logBatchMutex.Unlock()
+
+	s.logger.Debug().Int("batchSize", len(batchToSend)).Str("targetURL", s.cfg.TargetURLWithHostAndScheme).Msg("flushing a batch")
 
 	r, w := io.Pipe()
 	go func() {
