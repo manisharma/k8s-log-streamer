@@ -13,6 +13,7 @@ import (
 
 	"github.com/rs/zerolog"
 	corev1 "k8s.io/api/core/v1"
+	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
@@ -133,7 +134,31 @@ func (s *Server) deleteFn(_ context.Context, obj any) {
 	s.ledgerLocker.Unlock()
 }
 
+func (s *Server) populateLedger(ctx context.Context) error {
+	s.logger.Info().Msg("waiting for ledger to populate")
+	pods, err := s.k8sClient.CoreV1().Pods(corev1.NamespaceAll).List(ctx, v1.ListOptions{})
+	if err != nil {
+		s.logger.Error().Err(err).Msg("s.k8sClient.CoreV1().Pods().List() failed")
+		return err
+	}
+	s.ledgerLocker.Lock()
+	defer s.ledgerLocker.Unlock()
+	for _, pod := range pods.Items {
+		if !s.isPodCurated(&pod) {
+			continue
+		}
+		name := extractFullyQualifiedName(&pod)
+		fnCtx, cancel := context.WithCancel(ctx)
+		streamable := toStreamable(fnCtx, &pod)
+		s.ledger[name] = streamCtx{cancel: cancel, streamable: streamable}
+	}
+	s.logger.Info().Int("podCount", len(s.ledger)).Msg("ledger populated")
+	return nil
+}
+
 func (s *Server) start(ctx context.Context) error {
+
+	s.populateLedger(ctx)
 
 	go s.periodicDeltaFlusher(ctx)
 
@@ -243,6 +268,8 @@ func (s *Server) periodicLedgerProcessor(ctx context.Context) {
 		ledgerCopy map[string]streamCtx
 		ticker     = time.NewTicker(time.Second * 5)
 		flushing   = false
+		count      = 0
+		startedAt  time.Time
 	)
 	s.logger.Debug().Msg("started periodicLedgerProcessor")
 	defer func() {
@@ -261,6 +288,8 @@ func (s *Server) periodicLedgerProcessor(ctx context.Context) {
 		s.ledgerLocker.Unlock()
 		flushing = true
 		defer func() { flushing = false }()
+		count = 0
+		startedAt = time.Now()
 		for _, item := range ledgerCopy {
 			select {
 			case <-s.kill:
@@ -270,7 +299,9 @@ func (s *Server) periodicLedgerProcessor(ctx context.Context) {
 			default:
 			}
 			s.stream <- item.streamable
+			count++
 		}
+		s.logger.Debug().Int("count", count).Str("duration", time.Since(startedAt).String()).Msg("ledger items processed")
 	}
 	stream()
 
@@ -288,7 +319,6 @@ func (s *Server) periodicLedgerProcessor(ctx context.Context) {
 
 func (s *Server) processStream(id int) {
 	logger := s.logger.With().Int("workerId", id).Logger()
-	// logger.Debug().Msg("worker supnned up")
 	for item := range s.stream {
 		s.process(item, logger)
 	}

@@ -48,7 +48,7 @@ func Withk8sClient(k8sClient *kubernetes.Clientset) Option {
 
 func WithLogger(logger zerolog.Logger) Option {
 	return func(s *Server) {
-		s.logger = logger.With().Str("module", "k8s-logs-streamer").Logger()
+		s.logger = logger.With().Str("module", "k8sLogsStreamer").Logger()
 	}
 }
 
@@ -60,17 +60,18 @@ func WithNativeInformer(isNativeInformer bool) Option {
 
 func NewServer(cfg common.LogsStreamerConfig, options ...Option) *Server {
 	s := &Server{
-		cfg:              cfg,
-		kill:             make(chan struct{}),
-		logBatchMutex:    &sync.Mutex{},
-		httpClient:       &http.Client{Timeout: 10 * time.Second},
-		newLine:          []byte("\n"),
-		failedRegex:      regexp.MustCompile(`(?i)failed`),
-		errorRegex:       regexp.MustCompile(`(?i)error`),
-		ledger:           make(map[string]streamCtx),
-		ledgerLocker:     &sync.Mutex{},
-		stream:           make(chan streamable, 2000),
-		logger:           zerolog.New(os.Stdout).With().Str("module", "k8s-logs-streamer").Logger(),
+		cfg:           cfg,
+		kill:          make(chan struct{}),
+		logBatchMutex: &sync.Mutex{},
+		httpClient:    &http.Client{Timeout: 10 * time.Second},
+		newLine:       []byte("\n"),
+		failedRegex:   regexp.MustCompile(`(?i)failed`),
+		errorRegex:    regexp.MustCompile(`(?i)error`),
+		ledger:        make(map[string]streamCtx),
+		ledgerLocker:  &sync.Mutex{},
+		// stream:           make(chan streamable, 2000),
+		stream:           make(chan streamable),
+		logger:           zerolog.New(os.Stdout).With().Str("module", "k8sLogsStreamer").Logger(),
 		isNativeInformer: false,
 	}
 	s.keywords = make([][]byte, 0, len(cfg.Keywords))
@@ -131,6 +132,7 @@ func NewServer(cfg common.LogsStreamerConfig, options ...Option) *Server {
 	for _, option := range options {
 		option(s)
 	}
+	s.logger.Debug().Str("operator", s.cfg.Operator).Strs("keywords", cfg.Keywords).Int("filtersCount", len(s.filtersRegex)).Msg("initialized")
 	return s
 }
 
