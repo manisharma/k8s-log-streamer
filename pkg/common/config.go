@@ -13,4 +13,7 @@ type LogsStreamerConfig struct {
 	BatchSize                  int
 	WorkerCount                int
 	FlushInterval              time.Duration
+	SecondsToLookBackForLogs   int
+	RequestsPerSecond          int
+	BurstCapacity              int
 }

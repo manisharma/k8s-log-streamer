@@ -2,10 +2,12 @@ package internal
 
 import (
 	"context"
+	"time"
 )
 
 type streamCtx struct {
-	cancel context.CancelFunc
+	cancel         context.CancelFunc
+	lastStreamedAt time.Time
 	streamable
 }
 

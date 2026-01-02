@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"maps"
 	"net/http"
 	"slices"
 	"time"
@@ -240,7 +239,7 @@ func (s *Server) process(item streamable, logger zerolog.Logger) {
 		lgr := logger.With().Str("namespace", item.namespace).Str("pod", item.name).Str("container", container.name).Logger()
 		lgr.Debug().Msg("streaming")
 		logOptions := &corev1.PodLogOptions{Container: container.name}
-		logOptions.SinceSeconds = func(i int64) *int64 { return &i }(30)
+		logOptions.SinceSeconds = func(i int64) *int64 { return &i }(int64(s.cfg.SecondsToLookBackForLogs))
 		req := s.k8sClient.CoreV1().Pods(item.namespace).GetLogs(item.name, logOptions)
 		raw, err := req.Do(item.ctx).Raw()
 		if err != nil {
@@ -251,6 +250,9 @@ func (s *Server) process(item streamable, logger zerolog.Logger) {
 			continue
 		}
 		if curated, raw := s.areLogsCurated(raw); curated {
+			// if strings.HasPrefix(item.name, "mit-api") {
+			// 	fmt.Println("found")
+			// }
 			s.pileUpOrFlush(entry{
 				Namespace: item.namespace,
 				Pod:       item.name,
@@ -265,11 +267,10 @@ func (s *Server) process(item streamable, logger zerolog.Logger) {
 
 func (s *Server) periodicLedgerProcessor(ctx context.Context) {
 	var (
-		ledgerCopy map[string]streamCtx
-		ticker     = time.NewTicker(time.Second * 5)
-		flushing   = false
-		count      = 0
-		startedAt  time.Time
+		ticker    = time.NewTicker(time.Second * 5)
+		flushing  = false
+		count     = 0
+		startedAt time.Time
 	)
 	s.logger.Debug().Msg("started periodicLedgerProcessor")
 	defer func() {
@@ -282,24 +283,30 @@ func (s *Server) periodicLedgerProcessor(ctx context.Context) {
 			return
 		}
 		s.ledgerLocker.Lock()
-		// create copy of ledger to process outside lock
-		ledgerCopy = make(map[string]streamCtx, len(s.ledger))
-		maps.Copy(ledgerCopy, s.ledger)
-		s.ledgerLocker.Unlock()
 		flushing = true
-		defer func() { flushing = false }()
+		defer func() {
+			s.ledgerLocker.Unlock()
+			flushing = false
+		}()
 		count = 0
 		startedAt = time.Now()
-		for _, item := range ledgerCopy {
+		for key, item := range s.ledger {
+			if !item.lastStreamedAt.IsZero() && time.Since(item.lastStreamedAt) < time.Second*10 {
+				continue
+			}
 			select {
 			case <-s.kill:
 				return
 			case <-ctx.Done():
 				return
+			case s.stream <- item.streamable:
+				item.lastStreamedAt = time.Now()
+				s.ledger[key] = item
+				count++
 			default:
+				// skip if channel is full
+				continue
 			}
-			s.stream <- item.streamable
-			count++
 		}
 		s.logger.Debug().Int("count", count).Str("duration", time.Since(startedAt).String()).Msg("ledger items processed")
 	}

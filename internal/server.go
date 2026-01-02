@@ -85,6 +85,10 @@ func NewServer(cfg common.LogsStreamerConfig, options ...Option) *Server {
 		filteredKeywords = make([]string, 0, len(cfg.Keywords))
 	)
 
+	if s.cfg.SecondsToLookBackForLogs <= 0 {
+		s.cfg.SecondsToLookBackForLogs = 30
+	}
+
 	for _, keyword := range cfg.Keywords {
 		if strings.EqualFold(keyword, "4xx") {
 			has4xx = true
