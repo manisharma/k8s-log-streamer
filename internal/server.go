@@ -80,8 +80,8 @@ func NewServer(cfg common.LogsStreamerConfig, options ...Option) *Server {
 	var (
 		has4xx           = false
 		has5xx           = false
-		regexp5XXValue   = `\b(500|501|502|503|504|505|506|507|508|510|511)\b`
-		regexp4XXValue   = `\b4(?:[01][0-9]|2[1-689]|31|51)\b`
+		regexp5XXValue   = `(?: 5(?:0[0-8]|1[01])[ ,]|'5(?:0[0-8]|1[01])'|"5(?:0[0-8]|1[01])"|:5(?:0[0-8]|1[01]),?)`
+		regexp4XXValue   = `(?: 4(?:0[0-9]|1[0-8]|2[1-689]|31|51)[ ,]|'4(?:0[0-9]|1[0-8]|2[1-689]|31|51)'|"4(?:0[0-9]|1[0-8]|2[1-689]|31|51)"|:4(?:0[0-9]|1[0-8]|2[1-689]|31|51),?)`
 		filteredKeywords = make([]string, 0, len(cfg.Keywords))
 	)
 
