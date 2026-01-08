@@ -335,10 +335,10 @@ func (s *Server) meetsCriteria(raw []byte) bool {
 	if len(raw) == 0 {
 		return false
 	}
+	if !s.coreFilterRegex.Match(raw) {
+		return false
+	}
 	if s.cfg.Operator == "and" {
-		if !s.coreFilterRegex.Match(raw) {
-			return false
-		}
 		// 4xx status code must be in conjunction with 'failed' or 'error'
 		if s.regexp4xxValue != nil && s.regexp4xxValue.Match(raw) {
 			// short circuit if either 'failed' or 'error' is present
@@ -361,7 +361,26 @@ func (s *Server) meetsCriteria(raw []byte) bool {
 		}
 		return true
 	}
-	return s.coreFilterRegex.Match(raw)
+	// 4xx status code must be in conjunction with 'failed' or 'error'
+	if s.regexp4xxValue != nil && s.regexp4xxValue.Match(raw) {
+		// short circuit if either 'failed' or 'error' is present
+		if s.failedRegex.Match(raw) || s.errorRegex.Match(raw) {
+			return true
+		}
+	}
+	// 5xx status code must be in conjunction with 'failed' or 'error'
+	if s.regexp5xxValue != nil && s.regexp5xxValue.Match(raw) {
+		// short circuit if either 'failed' or 'error' is present
+		if s.failedRegex.Match(raw) || s.errorRegex.Match(raw) {
+			return true
+		}
+	}
+	for _, filter := range s.filtersRegex {
+		if filter.Match(raw) {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Server) areLogsCurated(raw []byte) (bool, []byte) {

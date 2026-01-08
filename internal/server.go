@@ -107,12 +107,12 @@ func NewServer(cfg common.LogsStreamerConfig, options ...Option) *Server {
 
 	var regexpBuilder strings.Builder
 	if has4xx || has5xx {
-		if has4xx {
-			s.filtersRegex = append(s.filtersRegex, s.regexp4xxValue)
-		}
-		if has5xx {
-			s.filtersRegex = append(s.filtersRegex, s.regexp5xxValue)
-		}
+		// if has4xx {
+		// 	s.filtersRegex = append(s.filtersRegex, s.regexp4xxValue)
+		// }
+		// if has5xx {
+		// 	s.filtersRegex = append(s.filtersRegex, s.regexp5xxValue)
+		// }
 		if has4xx && has5xx {
 			regexpBuilder.WriteString(regexp4XXValue + "|" + regexp5XXValue)
 		}
