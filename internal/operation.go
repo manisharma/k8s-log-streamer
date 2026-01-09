@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -229,6 +230,7 @@ func extractFullyQualifiedName(pod *corev1.Pod) string {
 }
 
 func (s *Server) process(item streamable, logger zerolog.Logger) {
+	var startTime time.Time = item.lastStreamedAt
 	// round robin through all containers
 	for _, container := range item.containers {
 		select {
@@ -236,23 +238,32 @@ func (s *Server) process(item streamable, logger zerolog.Logger) {
 			return
 		default:
 		}
+	RETRY:
 		lgr := logger.With().Str("namespace", item.namespace).Str("pod", item.name).Str("container", container.name).Logger()
 		lgr.Debug().Msg("streaming")
 		logOptions := &corev1.PodLogOptions{Container: container.name}
-		logOptions.SinceSeconds = func(i int64) *int64 { return &i }(int64(s.cfg.SecondsToLookBackForLogs))
+		logOptions.SinceSeconds = func() *int64 {
+			i := int64(time.Now().UTC().Sub(startTime).Seconds())
+			if i < 0 {
+				i = int64(s.cfg.SecondsToLookBackForLogs)
+			}
+			return &i
+		}()
 		req := s.k8sClient.CoreV1().Pods(item.namespace).GetLogs(item.name, logOptions)
 		raw, err := req.Do(item.ctx).Raw()
 		if err != nil {
 			if err == item.ctx.Err() {
 				return
 			}
+			if strings.Contains(err.Error(), "rate limit") {
+				time.Sleep(time.Second * 5) // respect rate limit
+				lgr.Warn().Msg("rate limited, retrying")
+				goto RETRY
+			}
 			lgr.Error().Err(err).Msg("streaming failed")
 			continue
 		}
 		if curated, raw := s.areLogsCurated(raw); curated {
-			// if strings.HasPrefix(item.name, "mit-api") {
-			// 	fmt.Println("found")
-			// }
 			s.pileUpOrFlush(entry{
 				Namespace: item.namespace,
 				Pod:       item.name,
@@ -267,7 +278,7 @@ func (s *Server) process(item streamable, logger zerolog.Logger) {
 
 func (s *Server) periodicLedgerProcessor(ctx context.Context) {
 	var (
-		ticker    = time.NewTicker(time.Second * 5)
+		ticker    = time.NewTicker(time.Second * 30)
 		flushing  = false
 		count     = 0
 		startedAt time.Time
@@ -289,18 +300,15 @@ func (s *Server) periodicLedgerProcessor(ctx context.Context) {
 			flushing = false
 		}()
 		count = 0
-		startedAt = time.Now()
+		startedAt = time.Now().UTC()
 		for key, item := range s.ledger {
-			if !item.lastStreamedAt.IsZero() && time.Since(item.lastStreamedAt) < time.Second*10 {
-				continue
-			}
 			select {
 			case <-s.kill:
 				return
 			case <-ctx.Done():
 				return
 			case s.stream <- item.streamable:
-				item.lastStreamedAt = time.Now()
+				item.lastStreamedAt = startedAt
 				s.ledger[key] = item
 				count++
 			default:

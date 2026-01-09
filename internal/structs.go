@@ -6,8 +6,7 @@ import (
 )
 
 type streamCtx struct {
-	cancel         context.CancelFunc
-	lastStreamedAt time.Time
+	cancel context.CancelFunc
 	streamable
 }
 
@@ -21,10 +20,11 @@ type entry struct {
 }
 
 type streamable struct {
-	ctx        context.Context
-	name       string
-	containers []streamableContainer
-	namespace  string
+	ctx            context.Context
+	name           string
+	containers     []streamableContainer
+	namespace      string
+	lastStreamedAt time.Time
 }
 
 type streamableContainer struct {
