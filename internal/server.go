@@ -31,7 +31,7 @@ type Server struct {
 	regexp5xxValue   *regexp.Regexp
 	regexp4xxValue   *regexp.Regexp
 	k8sClient        *kubernetes.Clientset
-	ledger           map[string]streamCtx
+	ledger           map[string]*streamCtx
 	ledgerLocker     *sync.Mutex
 	stream           chan streamable
 	logger           zerolog.Logger
@@ -67,7 +67,7 @@ func NewServer(cfg common.LogsStreamerConfig, options ...Option) *Server {
 		newLine:       []byte("\n"),
 		failedRegex:   regexp.MustCompile(`(?i)failed`),
 		errorRegex:    regexp.MustCompile(`(?i)error`),
-		ledger:        make(map[string]streamCtx),
+		ledger:        make(map[string]*streamCtx),
 		ledgerLocker:  &sync.Mutex{},
 		// stream:           make(chan streamable, 2000),
 		stream:           make(chan streamable),

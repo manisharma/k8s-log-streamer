@@ -62,7 +62,7 @@ func (s *Server) isPodCurated(pod *corev1.Pod) bool {
 }
 
 func toStreamable(ctx context.Context, pod *corev1.Pod) streamable {
-	p := streamable{ctx: ctx, name: pod.Name, namespace: pod.Namespace}
+	p := streamable{ctx: ctx, name: pod.Name, namespace: pod.Namespace, streamStartTime: time.Now().UTC()}
 	p.containers = make([]streamableContainer, 0, len(pod.Status.ContainerStatuses))
 	for _, container := range pod.Status.ContainerStatuses {
 		p.containers = append(p.containers, streamableContainer{
@@ -92,7 +92,7 @@ func (s *Server) addFn(ctx context.Context, obj any) {
 	}
 	fnCtx, cancel := context.WithCancel(ctx)
 	streamable := toStreamable(fnCtx, pod)
-	s.ledger[name] = streamCtx{cancel: cancel, streamable: streamable}
+	s.ledger[name] = &streamCtx{cancel: cancel, streamable: streamable}
 	s.ledgerLocker.Unlock()
 }
 
@@ -114,7 +114,7 @@ func (s *Server) updateFn(ctx context.Context, obj any) {
 	}
 	fnCtx, cancel := context.WithCancel(ctx)
 	streamable := toStreamable(fnCtx, pod)
-	s.ledger[name] = streamCtx{cancel: cancel, streamable: streamable}
+	s.ledger[name] = &streamCtx{cancel: cancel, streamable: streamable}
 	s.ledgerLocker.Unlock()
 }
 
@@ -150,7 +150,7 @@ func (s *Server) populateLedger(ctx context.Context) error {
 		name := extractFullyQualifiedName(&pod)
 		fnCtx, cancel := context.WithCancel(ctx)
 		streamable := toStreamable(fnCtx, &pod)
-		s.ledger[name] = streamCtx{cancel: cancel, streamable: streamable}
+		s.ledger[name] = &streamCtx{cancel: cancel, streamable: streamable}
 	}
 	s.logger.Info().Int("podCount", len(s.ledger)).Msg("ledger populated")
 	return nil
@@ -230,7 +230,7 @@ func extractFullyQualifiedName(pod *corev1.Pod) string {
 }
 
 func (s *Server) process(item streamable, logger zerolog.Logger) {
-	var startTime time.Time = item.lastStreamedAt
+	var startTime time.Time = item.streamStartTime
 	// round robin through all containers
 	for _, container := range item.containers {
 		select {
@@ -278,7 +278,7 @@ func (s *Server) process(item streamable, logger zerolog.Logger) {
 
 func (s *Server) periodicLedgerProcessor(ctx context.Context) {
 	var (
-		ticker    = time.NewTicker(time.Second * 30)
+		ticker    = time.NewTicker(time.Second * 10)
 		flushing  = false
 		count     = 0
 		startedAt time.Time
@@ -302,13 +302,16 @@ func (s *Server) periodicLedgerProcessor(ctx context.Context) {
 		count = 0
 		startedAt = time.Now().UTC()
 		for key, item := range s.ledger {
+			if !item.streamStartTime.IsZero() && time.Since(item.streamStartTime) < time.Second*5 {
+				continue
+			}
 			select {
 			case <-s.kill:
 				return
 			case <-ctx.Done():
 				return
 			case s.stream <- item.streamable:
-				item.lastStreamedAt = startedAt
+				item.streamStartTime = startedAt
 				s.ledger[key] = item
 				count++
 			default:
